@@ -1,2 +1,15 @@
+[project]
+name = "digicow-ai-backend"
+version = "1.0.0"
+description = "DigiCow AI Farmer Intelligence System API"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=2.3.0",
+    "flask-cors>=4.0.0",
+    "neo4j>=5.0.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0"
+]
+
 [tool.vercel]
 entrypoint = "api:app"
