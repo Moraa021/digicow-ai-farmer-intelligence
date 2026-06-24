@@ -244,7 +244,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Tabs ---
-tab1, tab2, tab3 = st.tabs(["👨‍🌾 Farmer Dashboard", "➕ Add Farmer", "📊 All Farmers"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["👨‍🌾 Farmer Dashboard", "➕ Add Farmer","✏️ Edit Farmer","🗑️ Delete Farmer", "📊 All Farmers"])
 
 # ============================================================
 # TAB 1: FARMER DASHBOARD
@@ -625,10 +625,144 @@ with tab2:
                 except Exception as e:
                     st.error(f"⚠️ Error adding farmer: {e}")
 
+
 # ============================================================
-# TAB 3: ALL FARMERS WITH EXPORT
+# TAB 3: EDIT FARMER
 # ============================================================
 with tab3:
+
+    st.markdown("### ✏️ Edit Farmer")
+
+    farmers = neo4j.query("""
+        MATCH (f:Farm)
+        RETURN f.name as name
+        ORDER BY f.name
+    """)
+
+    farmer_names = [f["name"] for f in farmers]
+
+    if farmer_names:
+
+        selected_farmer = st.selectbox(
+            "Select Farmer",
+            farmer_names
+        )
+
+        farmer = neo4j.query("""
+            MATCH (f:Farm {name:$name})
+            RETURN
+                f.name as name,
+                f.location as location,
+                f.phone as phone,
+                f.income as income,
+                f.acreage as acreage
+        """, {"name": selected_farmer})
+
+        if farmer:
+
+            farmer = farmer[0]
+
+            with st.form("edit_farmer_form"):
+
+                location = st.text_input(
+                    "Location",
+                    value=farmer["location"] or ""
+                )
+
+                phone = st.text_input(
+                    "Phone",
+                    value=farmer["phone"] or ""
+                )
+
+                income = st.number_input(
+                    "Income",
+                    value=int(farmer["income"] or 0)
+                )
+
+                acreage = st.number_input(
+                    "Acreage",
+                    value=float(farmer["acreage"] or 0)
+                )
+
+                update_btn = st.form_submit_button(
+                    "💾 Update Farmer"
+                )
+
+                if update_btn:
+
+                    neo4j.query("""
+                        MATCH (f:Farm {name:$name})
+                        SET
+                            f.location = $location,
+                            f.phone = $phone,
+                            f.income = $income,
+                            f.acreage = $acreage
+                    """, {
+                        "name": selected_farmer,
+                        "location": location,
+                        "phone": phone,
+                        "income": income,
+                        "acreage": acreage
+                    })
+
+                    st.success(
+                        f"{selected_farmer} updated successfully!"
+                    )
+
+                    st.rerun()
+
+
+# ============================================================
+# TAB 4: DELETE FARMER
+# ============================================================
+with tab4:
+
+    st.markdown("### 🗑️ Delete Farmer")
+
+    farmers = neo4j.query("""
+        MATCH (f:Farm)
+        RETURN f.name as name
+        ORDER BY f.name
+    """)
+
+    farmer_names = [f["name"] for f in farmers]
+
+    if farmer_names:
+
+        selected_farmer = st.selectbox(
+            "Select Farmer To Delete",
+            farmer_names
+        )
+
+        st.warning(
+            f"You are about to permanently delete {selected_farmer}"
+        )
+
+        confirm = st.checkbox(
+            "I understand this action cannot be undone"
+        )
+
+        if confirm:
+
+            if st.button("🗑️ Delete Farmer"):
+
+                neo4j.query("""
+                    MATCH (f:Farm {name:$name})
+                    DETACH DELETE f
+                """, {
+                    "name": selected_farmer
+                })
+
+                st.success(
+                    f"{selected_farmer} deleted successfully!"
+                )
+
+                st.rerun()
+
+# ============================================================
+# TAB 5: ALL FARMERS WITH EXPORT
+# ============================================================
+with tab5:
     st.markdown("### 📊 All Farmers")
     
     all_farmers = neo4j.query("""
