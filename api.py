@@ -215,34 +215,110 @@ def add_farmer():
     
     return jsonify({"message": f"Farmer {name} added successfully!"})
 
+# ============================================================
+# ✅ FIXED EDIT ENDPOINT
+# ============================================================
 @app.route('/farmers/<name>', methods=['PUT'])
 def edit_farmer(name):
     """Edit an existing farmer's details"""
-    data = request.json
+    try:
+        data = request.json
+        
+        with driver.session() as session:
+            # Check if farmer exists
+            check = session.run("MATCH (f:Farm {name: $name}) RETURN f", {"name": name})
+            if not check.single():
+                return jsonify({"error": f"Farmer '{name}' not found"}), 404
+            
+            # Update basic farmer properties
+            session.run("""
+                MATCH (f:Farm {name: $name})
+                SET f.location = $location,
+                    f.phone = $phone,
+                    f.income = $income,
+                    f.acreage = $acreage
+            """, {
+                "name": name,
+                "location": data.get('location', ''),
+                "phone": data.get('phone', ''),
+                "income": data.get('income', 0),
+                "acreage": data.get('acreage', 0)
+            })
+            
+            # Handle diseases if provided
+            if 'diseases' in data:
+                # Remove existing disease relationships
+                session.run("""
+                    MATCH (f:Farm {name: $name})-[r:AFFECTED_BY]->(d:Disease)
+                    DELETE r
+                """, {"name": name})
+                
+                # Add new disease relationships
+                for disease_name in data.get('diseases', []):
+                    if disease_name and disease_name.strip():
+                        # Check if disease exists, create if not
+                        disease_result = session.run(
+                            "MATCH (d:Disease {name: $name}) RETURN d",
+                            {"name": disease_name.strip()}
+                        )
+                        if not disease_result.single():
+                            session.run(
+                                "CREATE (d:Disease {name: $name, severity: 'Medium', treatment: 'Consult veterinary'})",
+                                {"name": disease_name.strip()}
+                            )
+                        session.run("""
+                            MATCH (f:Farm {name: $name})
+                            MATCH (d:Disease {name: $disease})
+                            CREATE (f)-[:AFFECTED_BY]->(d)
+                        """, {"name": name, "disease": disease_name.strip()})
+            
+            # Handle cows if provided
+            if 'cows' in data:
+                # Remove existing cow relationships
+                session.run("""
+                    MATCH (f:Farm {name: $name})-[r:OWNS]->(c:Cow)
+                    DELETE r, c
+                """, {"name": name})
+                
+                # Add new cows
+                for cow_breed in data.get('cows', []):
+                    if cow_breed and cow_breed.strip():
+                        session.run("""
+                            MATCH (f:Farm {name: $name})
+                            CREATE (c:Cow {id: randomUUID(), breed: $breed, milk_yield: 20})
+                            CREATE (f)-[:OWNS]->(c)
+                        """, {"name": name, "breed": cow_breed.strip()})
+            
+            # Recalculate priority score
+            session.run("""
+                MATCH (f:Farm {name: $name})
+                OPTIONAL MATCH (f)-[:AFFECTED_BY]->(d:Disease)
+                WITH f, COUNT(DISTINCT d) as disease_count
+                SET f.priority_score = 
+                    CASE 
+                        WHEN disease_count >= 2 THEN 100
+                        WHEN disease_count = 1 THEN 75
+                        ELSE 25
+                    END
+            """, {"name": name})
+        
+        return jsonify({"message": f"Farmer {name} updated successfully!"})
     
-    with driver.session() as session:
-        # Check if the farmer exists first
-        check = session.run("MATCH (f:Farm {name: $name}) RETURN f", {"name": name})
-        if not check.single():
-            return jsonify({"error": "Farmer not found"}), 404
-        
-        # Update properties dynamically using the SET clause
-        session.run("""
-            MATCH (f:Farm {name: $name})
-            SET f.location = $location,
-                f.phone = $phone,
-                f.income = $income,
-                f.acreage = $acreage
-        """, {
-            "name": name,
-            "location": data.get('location', ''),
-            "phone": data.get('phone', ''),
-            "income": data.get('income', 0),
-            "acreage": data.get('acreage', 0)
-        })
-        
-    return jsonify({"message": f"Farmer {name} updated successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+# ============================================================
+# ALTERNATIVE UPDATE ENDPOINT (for Lovable compatibility)
+# ============================================================
+@app.route('/farmers/update', methods=['POST', 'PUT'])
+def update_farmer():
+    """Alternative endpoint for updating farmer (compatibility)"""
+    data = request.json
+    name = data.get('name')
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    # Call the main edit function
+    return edit_farmer(name)
 
 @app.route('/farmers/<name>', methods=['DELETE'])
 def delete_farmer(name):
@@ -260,7 +336,6 @@ def delete_farmer(name):
         """, {"name": name})
         
     return jsonify({"message": f"Farmer {name} deleted successfully!"})
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
