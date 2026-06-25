@@ -7,8 +7,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configure Flask to serve Vite's production build folder
-app = Flask(__name__, static_folder='dist/client', static_url_path='')
+# 1. DYNAMICALLY DETECT FRONTEND BUILD DIRECTORY
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Check the three common places Render or local npm builds place the assets
+if os.path.exists(os.path.join(BASE_DIR, "client_build")):
+    FRONTEND_FOLDER = os.path.join(BASE_DIR, "client_build")
+elif os.path.exists(os.path.join(BASE_DIR, "dist", "client")):
+    FRONTEND_FOLDER = os.path.join(BASE_DIR, "dist", "client")
+else:
+    FRONTEND_FOLDER = os.path.join(BASE_DIR, "dist")
+
+# Initialize Flask with the verified dynamic folder path
+app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path='')
 CORS(app)  # Allows Lovable to call this API
 
 # Neo4j connection
@@ -30,12 +41,12 @@ client = OpenAI(
 @app.route('/<path:path>')
 def serve(path):
     """Serve frontend static files and handle client-side routing fallback"""
-    # If the file request exists inside the dist/client directory, serve it directly
+    # If the file request exists inside our frontend directory, serve it directly
     if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     
     # Exclude API calls from getting the fallback index page if they don't match anything
-    if path.startswith('farmers') or path.startswith('recommend'):
+    if path.startswith('farmers') or path.startswith('recommend') or path.startswith('api'):
         return jsonify({"error": "API route not found"}), 404
         
     # Otherwise, return the main index.html for TanStack frontend paths to take over
@@ -236,6 +247,7 @@ def add_farmer():
     
     return jsonify({"message": f"Farmer {name} added successfully!"})
 
+
 @app.route('/farmers/<name>', methods=['PUT'])
 def edit_farmer(name):
     """Edit an existing farmer's details"""
@@ -264,7 +276,3 @@ def edit_farmer(name):
             })
             return jsonify({"message": f"Farmer {name} updated successfully!"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
