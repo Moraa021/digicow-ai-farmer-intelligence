@@ -1,0 +1,70 @@
+import type { AddFarmerPayload, Farmer, RecommendationResponse } from "./types";
+
+const API_BASE =
+  (import.meta as any).env?.VITE_API_BASE_URL ||
+  "https://digicow-ai-farmer-intelligence.onrender.com";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = await res.json();
+      detail = data?.detail || data?.message || JSON.stringify(data);
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  listFarmers: () => request<Farmer[]>("/farmers"),
+  getFarmer: (name: string) =>
+    request<Farmer>(`/farmers/${encodeURIComponent(name)}`),
+  recommend: (farmer_name: string) =>
+    request<RecommendationResponse>("/recommend", {
+      method: "POST",
+      body: JSON.stringify({ farmer_name }),
+    }),
+  addFarmer: (payload: AddFarmerPayload) =>
+    request<Farmer>("/farmers/add", {
+      method: "POST",
+      body: JSON.stringify({
+        name: payload.name,
+        location: payload.location ?? "",
+        phone: payload.phone ?? "",
+        income: payload.income ?? 0,
+        cows: payload.cows ?? [],
+        diseases: payload.diseases ?? [],
+        soil: payload.soil ?? "",
+      }),
+    }),
+  // ✅ FIXED - This is the only change
+  updateFarmer: (payload: AddFarmerPayload) =>
+    request<Farmer>(`/farmers/${encodeURIComponent(payload.name)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: payload.name,
+        location: payload.location ?? "",
+        phone: payload.phone ?? "",
+        income: payload.income ?? 0,
+        cows: payload.cows ?? [],
+        diseases: payload.diseases ?? [],
+        soil: payload.soil ?? "",
+      }),
+    }),
+  deleteFarmer: (name: string) =>
+    request<{ message?: string }>(
+      `/farmers/delete/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+};
