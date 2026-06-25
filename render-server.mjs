@@ -1,7 +1,10 @@
 import { createServer } from "http";
-import { readFileSync } from "fs";
 import { createRequire } from "module";
+import { readFileSync, existsSync } from "fs";
+import { join, extname } from "path";
+import { fileURLToPath } from "url";
 
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const require = createRequire(import.meta.url);
 
 let handler;
@@ -13,12 +16,35 @@ try {
   process.exit(1);
 }
 
+const MIME = {
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".html": "text/html",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+};
+
 const port = process.env.PORT || 3000;
 
 const server = createServer(async (req, res) => {
   try {
+    // Serve static assets from dist/client
+    const staticPath = join(__dirname, "dist/client", req.url.split("?")[0]);
+    if (existsSync(staticPath) && !staticPath.endsWith("/")) {
+      const ext = extname(staticPath);
+      res.writeHead(200, {
+        "Content-Type": MIME[ext] || "application/octet-stream",
+        "Cache-Control": "public, max-age=31536000",
+      });
+      res.end(readFileSync(staticPath));
+      return;
+    }
+
+    // SSR everything else
     const url = new URL(req.url, `http://${req.headers.host}`);
-    
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
@@ -32,10 +58,8 @@ const server = createServer(async (req, res) => {
     });
 
     const response = await handler.fetch(request, {}, {});
-
     res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-    const buf = Buffer.from(await response.arrayBuffer());
-    res.end(buf);
+    res.end(Buffer.from(await response.arrayBuffer()));
   } catch (e) {
     console.error("Request error:", e);
     res.writeHead(500);
@@ -45,9 +69,4 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
-});
-
-server.on("error", (e) => {
-  console.error("Server error:", e);
-  process.exit(1);
 });
