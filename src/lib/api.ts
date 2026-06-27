@@ -35,6 +35,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ farmer_name }),
     }),
+  sendSMS: (to: string, message: string) =>
+    request<{ message: string; response?: string }>("/send-sms", {
+      method: "POST",
+      body: JSON.stringify({ to, message }),
+    }),
   addFarmer: (payload: AddFarmerPayload) =>
     request<Farmer>("/farmers/add", {
       method: "POST",
@@ -45,6 +50,7 @@ export const api = {
         income: payload.income ?? 0,
         cows: payload.cows ?? [],
         diseases: payload.diseases ?? [],
+        milk_production: payload.milk_production ?? 0,
         soil: payload.soil ?? "",
       }),
     }),
@@ -58,6 +64,7 @@ export const api = {
         income: payload.income ?? 0,
         cows: payload.cows ?? [],
         diseases: payload.diseases ?? [],
+        milk_production: payload.milk_production ?? 0,
         soil: payload.soil ?? "",
       }),
     }),

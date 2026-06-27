@@ -40,6 +40,9 @@ function AddFarmer() {
   const [income, setIncome] = useState<string>("");
   const [cows, setCows] = useState<string[]>([]);
   const [cowInput, setCowInput] = useState("");
+  const [diseasesInput, setDiseasesInput] = useState("");
+  const [diseases, setDiseases] = useState<string[]>([]);
+  const [milkProduction, setMilkProduction] = useState<string>("");
 
   const m = useMutation({
     mutationFn: api.addFarmer,
@@ -60,6 +63,15 @@ function AddFarmer() {
     if (!cows.includes(v)) setCows([...cows, v]);
     setCowInput("");
   };
+
+  const addDisease = () => {
+    const v = diseasesInput.trim();
+    if (!v) return;
+    if (!diseases.includes(v)) setDiseases([...diseases, v]);
+    setDiseasesInput("");
+  };
+
+  const removeDisease = (c: string) => setDiseases(diseases.filter((x) => x !== c));
 
   const removeCow = (c: string) => setCows(cows.filter((x) => x !== c));
 
@@ -82,12 +94,22 @@ function AddFarmer() {
       toast.error(parsed.error.issues[0]?.message ?? "Invalid input");
       return;
     }
+
+    const finalCows = cowInput.trim()
+      ? Array.from(new Set([...cows, cowInput.trim()]))
+      : cows;
+    const finalDiseases = diseasesInput.trim()
+      ? Array.from(new Set([...diseases, diseasesInput.trim()]))
+      : diseases;
+
     m.mutate({
       name: parsed.data.name,
       location: parsed.data.location,
       phone: parsed.data.phone,
       income: parsed.data.income ?? 0,
-      cows,
+      cows: finalCows,
+      diseases: finalDiseases,
+      milk_production: milkProduction ? Number(milkProduction) : 0,
     });
   };
 
@@ -189,6 +211,60 @@ function AddFarmer() {
               </button>
             </div>
           </div>
+        </Field>
+
+        <Field label="Diseases">
+          <div className="rounded-lg border border-border bg-background p-2">
+            {diseases.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {diseases.map((c) => (
+                  <span
+                    key={c}
+                    className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
+                  >
+                    {c}
+                    <button
+                      type="button"
+                      onClick={() => removeDisease(c)}
+                      className="rounded-full text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${c}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={diseasesInput}
+                onChange={(e) => setDiseasesInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addDisease(); }
+                }}
+                placeholder="Type a disease and press Enter (e.g., Mastitis)"
+                className="w-full bg-transparent px-2 py-1.5 text-sm outline-none"
+              />
+              <button
+                type="button"
+                onClick={addDisease}
+                className="rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-accent"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </Field>
+
+        <Field label="Milk Production (litres/day)">
+          <input
+            type="number"
+            min={0}
+            value={milkProduction}
+            onChange={(e) => setMilkProduction(e.target.value)}
+            placeholder="e.g., 12"
+            className="input"
+          />
         </Field>
 
         <div className="flex flex-wrap justify-end gap-2 pt-2">

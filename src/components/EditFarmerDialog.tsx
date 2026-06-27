@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { SOIL_TYPES, type Farmer } from "@/lib/types";
@@ -14,6 +15,7 @@ export function EditFarmerDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
@@ -21,6 +23,7 @@ export function EditFarmerDialog({
   const [soil, setSoil] = useState("");
   const [cows, setCows] = useState("");
   const [diseases, setDiseases] = useState("");
+  const [milk, setMilk] = useState("");
 
   useEffect(() => {
     if (farmer && open) {
@@ -31,6 +34,7 @@ export function EditFarmerDialog({
       setSoil(farmer.soil || "");
       setCows((farmer.cows || []).join(", "));
       setDiseases((farmer.diseases || []).join(", "));
+      setMilk(String(farmer.milk_production ?? ""));
     }
   }, [farmer, open]);
 
@@ -40,6 +44,7 @@ export function EditFarmerDialog({
       toast.success("✅ Farmer updated!");
       qc.invalidateQueries({ queryKey: ["farmers"] });
       qc.invalidateQueries({ queryKey: ["farmer", name] });
+      navigate({ to: "/farmers/$name", params: { name } });
       onClose();
     },
     onError: (e: Error) => toast.error(e.message || "Update failed"),
@@ -57,6 +62,7 @@ export function EditFarmerDialog({
       soil: soil.trim(),
       cows: cows.split(",").map((s) => s.trim()).filter(Boolean),
       diseases: diseases.split(",").map((s) => s.trim()).filter(Boolean),
+      milk_production: milk ? Number(milk) : 0,
     });
   };
 
@@ -152,6 +158,16 @@ export function EditFarmerDialog({
               value={diseases}
               onChange={(e) => setDiseases(e.target.value)}
               placeholder="Mastitis, ECF"
+            />
+          </EditField>
+
+          <EditField label="Milk Production (litres/day)">
+            <input
+              type="number"
+              min={0}
+              className="edit-input"
+              value={milk}
+              onChange={(e) => setMilk(e.target.value)}
             />
           </EditField>
 

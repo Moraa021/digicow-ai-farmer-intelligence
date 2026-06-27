@@ -25,6 +25,7 @@ export function SymptomChecker({ farmer }: { farmer: Farmer }) {
         cows: farmer.cows,
         soil: farmer.soil,
         diseases: Array.from(new Set([...(farmer.diseases || []), disease])),
+        milk_production: farmer.milk_production ?? 0,
       }),
     onSuccess: (_d, disease) => {
       toast.success(`Added ${disease} to ${farmer.name}`);

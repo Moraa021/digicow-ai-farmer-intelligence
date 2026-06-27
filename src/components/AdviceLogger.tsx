@@ -6,6 +6,7 @@ import {
   removeAdvice,
   type AdviceEntry,
 } from "@/lib/local-store";
+import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 
 export function AdviceLogger({
@@ -90,15 +91,37 @@ export function AdviceLogger({
                 </div>
                 <p className="mt-1.5 whitespace-pre-wrap text-sm">{e.note}</p>
               </div>
-              <button
-                onClick={() => {
-                  removeAdvice(farmerName, e.id);
-                  reload();
-                }}
-                className="shrink-0 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              >
-                {t("advice.delete")}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    removeAdvice(farmerName, e.id);
+                    reload();
+                  }}
+                  className="shrink-0 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                >
+                  {t("advice.delete")}
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const farmer = await api.getFarmer(farmerName);
+                      const to = farmer.phone;
+                      if (!to) {
+                        toast.error('Farmer has no phone number');
+                        return;
+                      }
+                      await api.sendSMS(to, `${e.topic}: ${e.note}`);
+                      toast.success('SMS queued');
+                    } catch (err) {
+                      console.error('SMS error', err);
+                      toast.error(err instanceof Error ? err.message : 'Could not send SMS');
+                    }
+                  }}
+                  className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold"
+                >
+                  Send SMS
+                </button>
+              </div>
             </li>
           ))
         )}

@@ -6,6 +6,7 @@ export interface Farmer {
   priority: number;
   cows: string[];
   diseases: string[];
+  milk_production?: number;
   soil?: string;
 }
 
@@ -17,6 +18,7 @@ export interface AddFarmerPayload {
   cows?: string[];
   diseases?: string[];
   soil?: string;
+  milk_production?: number;
 }
 
 export const SOIL_TYPES = [
