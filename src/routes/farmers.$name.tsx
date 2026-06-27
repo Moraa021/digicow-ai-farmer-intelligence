@@ -128,6 +128,10 @@ function FarmerProfile() {
     typeof farmer.income === "number" && farmer.income > 0
       ? `KES ${farmer.income.toLocaleString()}`
       : "—";
+  const milk =
+    typeof farmer.milk_production === "number" && farmer.milk_production > 0
+      ? `${farmer.milk_production} L`
+      : "—";
 
   const handleDelete = () => {
     if (confirm(`Delete farmer "${name}"? This cannot be undone.`)) {
@@ -173,14 +177,15 @@ function FarmerProfile() {
           </div>
         </div>
 
-        <div className="grid gap-4 border-t border-border p-6 sm:grid-cols-3 sm:p-8">
-          <Metric label={t("profile.annualIncome")} value={income} />
-          <Metric label={t("profile.livestock")} value={`${farmer.cows.length} cow(s)`} />
-          <Metric
-            label={t("profile.activeDiseases")}
-            value={`${farmer.diseases.length}`}
-            tone={farmer.diseases.length ? "critical" : "low"}
-          />
+        <div className="grid gap-4 border-t border-border p-6 sm:grid-cols-4 sm:p-8">
+            <Metric label={t("profile.annualIncome")} value={income} />
+            <Metric label={t("profile.livestock")} value={`${farmer.cows.length} cow(s)`} />
+            <Metric label={t("profile.milkProduction")} value={milk} />
+            <Metric
+              label={t("profile.activeDiseases")}
+              value={`${farmer.diseases.length}`}
+              tone={farmer.diseases.length ? "critical" : "low"}
+            />
         </div>
       </section>
 

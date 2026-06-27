@@ -39,7 +39,7 @@ export function FarmerCard({
         <PriorityBadge score={priority} />
       </div>
 
-      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+      <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
         <div className="min-w-0">
           <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
             {t("card.income")}
@@ -51,6 +51,12 @@ export function FarmerCard({
             {t("card.phone")}
           </dt>
           <dd className="truncate font-medium">{farmer.phone || "—"}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            {t("card.milkProduction")}
+          </dt>
+          <dd className="truncate font-medium">{typeof farmer.milk_production === 'number' && farmer.milk_production > 0 ? `${farmer.milk_production} L` : '—'}</dd>
         </div>
       </dl>
 
