@@ -147,7 +147,16 @@ export function EditFarmerDialog({
               </select>
             </EditField>
           </div>
-          <EditField label="Cows (comma-separated)">
+          <EditField label="Number of Cows">
+            <input
+              type="number"
+              min={0}
+              className="edit-input"
+              value={cowCount}
+              onChange={(e) => setCowCount(e.target.value)}
+            />
+          </EditField>
+          <EditField label="Breeds (comma-separated)">
             <input
               className="edit-input"
               value={cows}
