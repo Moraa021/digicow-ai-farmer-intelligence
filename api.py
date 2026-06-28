@@ -9,7 +9,7 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # Initialize as a clean, lightweight standalone API server
 app = Flask(__name__)
@@ -813,8 +813,11 @@ def send_sms():
         return jsonify({"error": "to and message are required"}), 400
 
     api_key = os.getenv('AFRICASTAKING_API_KEY')
+    username = os.getenv('AFRICASTAKING_USERNAME')
     if not api_key:
         return jsonify({"error": "AFRICASTAKING_API_KEY is not configured"}), 500
+    if not username:
+        return jsonify({"error": "AFRICASTAKING_USERNAME is not configured"}), 500
 
     normalized_to = normalize_phone_number(to)
     url = os.getenv('AFRICASTAKING_URL', 'https://api.africastalking.com/version1/messaging')
@@ -824,7 +827,7 @@ def send_sms():
         'apiKey': api_key,
     }
     payload = {
-        'username': os.getenv('AFRICASTAKING_USERNAME', ''),
+        'username': username,
         'to': normalized_to,
         'message': message,
     }
