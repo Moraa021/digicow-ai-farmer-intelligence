@@ -2,7 +2,7 @@ import type { AddFarmerPayload, Farmer, RecommendationResponse } from "./types";
 
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE_URL ||
-  "https://digicow-ai-farmer-intelligence.onrender.com";
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:5000");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

@@ -193,6 +193,16 @@ def sqlite_edit_farmer(name, data):
     conn.close()
 
 
+def sqlite_delete_farmer(name):
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM cows WHERE farmer_name = ?", (name,))
+    cur.execute("DELETE FROM diseases WHERE farmer_name = ?", (name,))
+    cur.execute("DELETE FROM farmers WHERE name = ?", (name,))
+    conn.commit()
+    conn.close()
+
+
 # Featherless AI
 client = OpenAI(
     base_url="https://api.featherless.ai/v1",
@@ -573,6 +583,24 @@ def recommend():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/farmers/delete/<name>', methods=['DELETE'])
+def delete_farmer(name):
+    """Delete a farmer from Neo4j or SQLite fallback."""
+    try:
+        with driver.session() as session:
+            # Delete farmer and owned cow nodes cleanly while keeping shared disease nodes.
+            session.run("""
+                MATCH (f:Farm {name: $name})
+                OPTIONAL MATCH (f)-[:OWNS]->(c:Cow)
+                DETACH DELETE f, c
+            """, {"name": name})
+        return jsonify({"message": "Farmer deleted"})
+    except Exception as e:
+        print(f'api.py: delete_farmer Neo4j exception for {name}: {e}')
+        sqlite_delete_farmer(name)
+        return jsonify({"message": "Farmer deleted (SQLite fallback)"})
 
 
 # ---------- SMS sending (Africastaking) ----------
