@@ -80,6 +80,10 @@ def ensure_sqlite_columns():
     cur.execute("PRAGMA table_info(farmers)")
     columns = {row[1] for row in cur.fetchall()}
     for name, definition in [
+        ("acreage", "REAL"),
+        ("priority_score", "REAL"),
+        ("milk_production", "REAL"),
+        ("cow_count", "INTEGER"),
         ("priority_override_score", "REAL"),
         ("priority_override_reason", "TEXT"),
         ("priority_override_updated_at", "INTEGER"),
