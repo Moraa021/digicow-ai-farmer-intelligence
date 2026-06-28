@@ -1,5 +1,11 @@
 import type { AddFarmerPayload, Farmer, RecommendationResponse } from "./types";
 
+interface PriorityOverride {
+  score: number;
+  reason: string;
+  updatedAt: number;
+}
+
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE_URL ||
   (typeof window !== "undefined" ? window.location.origin : "http://localhost:5000");
@@ -75,4 +81,15 @@ export const api = {
       `/farmers/delete/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+  getPriorityOverride: (name: string) =>
+    request<PriorityOverride | null>(`/priority-override/${encodeURIComponent(name)}`),
+  setPriorityOverride: (name: string, payload: { score: number; reason: string }) =>
+    request<PriorityOverride>(`/priority-override/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  clearPriorityOverride: (name: string) =>
+    request<null>(`/priority-override/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
 };

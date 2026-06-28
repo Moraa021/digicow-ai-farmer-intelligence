@@ -4,6 +4,7 @@ from neo4j import GraphDatabase
 import sqlite3
 import requests
 import json
+import time
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -37,7 +38,10 @@ def ensure_sqlite():
         acreage REAL,
         priority_score REAL,
         milk_production REAL,
-        cow_count INTEGER
+        cow_count INTEGER,
+        priority_override_score REAL,
+        priority_override_reason TEXT,
+        priority_override_updated_at INTEGER
     )
     """)
     cur.execute("""
@@ -68,6 +72,137 @@ def ensure_sqlite():
     conn.close()
 
 ensure_sqlite()
+
+
+def ensure_sqlite_columns():
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(farmers)")
+    columns = {row[1] for row in cur.fetchall()}
+    for name, definition in [
+        ("priority_override_score", "REAL"),
+        ("priority_override_reason", "TEXT"),
+        ("priority_override_updated_at", "INTEGER"),
+    ]:
+        if name not in columns:
+            cur.execute(f"ALTER TABLE farmers ADD COLUMN {name} {definition}")
+    conn.commit()
+    conn.close()
+
+
+ensure_sqlite_columns()
+
+
+def get_priority_override_from_store(name):
+    try:
+        with driver.session() as session:
+            record = session.run(
+                """
+                MATCH (f:Farm {name: $name})
+                RETURN f.priority_override_score as score,
+                       f.priority_override_reason as reason,
+                       f.priority_override_updated_at as updatedAt
+                """,
+                {"name": name},
+            ).single()
+            if record and (record.get("score") is not None or record.get("reason") is not None):
+                return {
+                    "score": record.get("score"),
+                    "reason": record.get("reason") or "",
+                    "updatedAt": record.get("updatedAt") or 0,
+                }
+    except Exception as e:
+        print(f"api.py: get_priority_override_from_store Neo4j exception for {name}: {e}")
+
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT priority_override_score, priority_override_reason, priority_override_updated_at FROM farmers WHERE name = ?",
+        (name,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row and (row[0] is not None or row[1] is not None):
+        return {
+            "score": row[0],
+            "reason": row[1] or "",
+            "updatedAt": row[2] or 0,
+        }
+    return None
+
+
+def set_priority_override_in_store(name, score, reason):
+    updated_at = int(time.time() * 1000)
+    override = {"score": round(float(score)), "reason": reason or "", "updatedAt": updated_at}
+    try:
+        with driver.session() as session:
+            session.run(
+                """
+                MATCH (f:Farm {name: $name})
+                SET f.priority_override_score = $score,
+                    f.priority_override_reason = $reason,
+                    f.priority_override_updated_at = $updatedAt
+                """,
+                {"name": name, "score": override["score"], "reason": override["reason"], "updatedAt": override["updatedAt"]},
+            )
+        return override
+    except Exception as e:
+        print(f"api.py: set_priority_override_in_store Neo4j exception for {name}: {e}")
+
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM farmers WHERE name = ?",
+        (name,),
+    )
+    exists = cur.fetchone()
+    if exists:
+        cur.execute(
+            "UPDATE farmers SET priority_override_score = ?, priority_override_reason = ?, priority_override_updated_at = ? WHERE name = ?",
+            (override["score"], override["reason"], override["updatedAt"], name),
+        )
+    else:
+        cur.execute(
+            "INSERT INTO farmers (id, name, location, phone, income, acreage, priority_score, milk_production, cow_count, priority_override_score, priority_override_reason, priority_override_updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, name, "", "", 0, 0, 0, 0, 0, override["score"], override["reason"], override["updatedAt"]),
+        )
+    conn.commit()
+    conn.close()
+    return override
+
+
+def clear_priority_override_in_store(name):
+    try:
+        with driver.session() as session:
+            session.run(
+                """
+                MATCH (f:Farm {name: $name})
+                REMOVE f.priority_override_score,
+                       f.priority_override_reason,
+                       f.priority_override_updated_at
+                """,
+                {"name": name},
+            )
+    except Exception as e:
+        print(f"api.py: clear_priority_override_in_store Neo4j exception for {name}: {e}")
+
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE farmers SET priority_override_score = NULL, priority_override_reason = NULL, priority_override_updated_at = NULL WHERE name = ?",
+        (name,),
+    )
+    conn.commit()
+    conn.close()
+    return None
+
+
+def get_effective_priority(name, fallback_score):
+    override = get_priority_override_from_store(name)
+    if override:
+        return override.get("score", fallback_score or 0)
+    return fallback_score or 0
+
 
 def compute_priority_score(farmer_props, cows, diseases):
     # Base score starts at 50
@@ -252,7 +387,7 @@ def get_farmers():
                     "location": record.get('location') or 'N/A',
                     "phone": record.get('phone') or 'N/A',
                     "income": record.get('income') or 0,
-                    "priority": record.get('priority') or 0,
+                    "priority": get_effective_priority(record.get('name'), record.get('priority') or 0),
                     "milk_production": record.get('milk_production') or 0,
                     "cow_count": record.get('cow_count') if record.get('cow_count') is not None else len(record.get('cows') or []),
                     "cows": record.get('cows') or [],
@@ -292,7 +427,7 @@ def get_farmer(name):
                     "location": data.get('location') or 'N/A',
                     "phone": data.get('phone') or 'N/A',
                     "income": data.get('income') or 0,
-                    "priority": data.get('priority') or 0,
+                    "priority": get_effective_priority(data.get('name'), data.get('priority') or 0),
                     "milk_production": data.get('milk_production') or 0,
                     "cow_count": data.get('cow_count') if data.get('cow_count') is not None else len(data.get('cows') or []),
                     "cows": data.get('cows') or [],
@@ -516,6 +651,31 @@ def edit_farmer(name):
             return jsonify(farmer_obj)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ---------- PRIORITY OVERRIDE ENDPOINTS ----------
+
+@app.route('/priority-override/<name>', methods=['GET'])
+def get_priority_override_route(name):
+    override = get_priority_override_from_store(name)
+    return jsonify(override)
+
+
+@app.route('/priority-override/<name>', methods=['PUT'])
+def save_priority_override_route(name):
+    data = request.json or {}
+    score = data.get('score')
+    reason = data.get('reason', '')
+    if score is None:
+        return jsonify({"error": "score is required"}), 400
+    override = set_priority_override_in_store(name, score, reason)
+    return jsonify(override)
+
+
+@app.route('/priority-override/<name>', methods=['DELETE'])
+def delete_priority_override_route(name):
+    clear_priority_override_in_store(name)
+    return jsonify(None)
 
 
 # ---------- AI RECOMENDATION ENDPOINT ----------
