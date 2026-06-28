@@ -141,7 +141,7 @@ function RootComponent() {
             <Outlet />
           </main>
           <footer className="border-t border-border/60 mt-12 py-6 text-center text-xs text-muted-foreground">
-            🐄 DigiCow Africa · Kenya AI Challenge 2026 · AgriFin Track
+            🐄 DigiCow Africa · Kenya AI Challenge 2026 · AgriFin Track. Developed by Z01Techies
           </footer>
         </div>
         <Toaster position="top-right" richColors />
