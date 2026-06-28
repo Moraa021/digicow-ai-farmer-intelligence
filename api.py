@@ -97,6 +97,57 @@ def ensure_sqlite_columns():
 ensure_sqlite_columns()
 
 
+def sync_sqlite_to_neo4j():
+    try:
+        conn = sqlite3.connect(SQLITE_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT name, location, phone, income, acreage, priority_score, milk_production, cow_count FROM farmers"
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"api.py: sync_sqlite_to_neo4j sqlite error: {e}")
+        return False
+
+    try:
+        with driver.session() as session:
+            for row in rows:
+                name = row[0]
+                if not name:
+                    continue
+                session.run(
+                    """
+                    MERGE (f:Farm {name: $name})
+                    SET f.location = $location,
+                        f.phone = $phone,
+                        f.income = $income,
+                        f.acreage = $acreage,
+                        f.priority_score = $priority,
+                        f.milk_production = $milk,
+                        f.cow_count = $cow_count,
+                        f.id = coalesce(f.id, randomUUID())
+                    """,
+                    {
+                        "name": name,
+                        "location": row[1] or "",
+                        "phone": row[2] or "",
+                        "income": row[3] or 0,
+                        "acreage": row[4] or 0,
+                        "priority": row[5] or 0,
+                        "milk": row[6] or 0,
+                        "cow_count": row[7] or 0,
+                    },
+                )
+            return True
+    except Exception as e:
+        print(f"api.py: sync_sqlite_to_neo4j Neo4j error: {e}")
+        return False
+
+
+sync_sqlite_to_neo4j()
+
+
 def get_priority_override_from_store(name):
     try:
         with driver.session() as session:
@@ -138,20 +189,6 @@ def get_priority_override_from_store(name):
 def set_priority_override_in_store(name, score, reason):
     updated_at = int(time.time() * 1000)
     override = {"score": round(float(score)), "reason": reason or "", "updatedAt": updated_at}
-    try:
-        with driver.session() as session:
-            session.run(
-                """
-                MATCH (f:Farm {name: $name})
-                SET f.priority_override_score = $score,
-                    f.priority_override_reason = $reason,
-                    f.priority_override_updated_at = $updatedAt
-                """,
-                {"name": name, "score": override["score"], "reason": override["reason"], "updatedAt": override["updatedAt"]},
-            )
-        return override
-    except Exception as e:
-        print(f"api.py: set_priority_override_in_store Neo4j exception for {name}: {e}")
 
     conn = sqlite3.connect(SQLITE_PATH)
     cur = conn.cursor()
@@ -172,10 +209,34 @@ def set_priority_override_in_store(name, score, reason):
         )
     conn.commit()
     conn.close()
+
+    try:
+        with driver.session() as session:
+            session.run(
+                """
+                MATCH (f:Farm {name: $name})
+                SET f.priority_override_score = $score,
+                    f.priority_override_reason = $reason,
+                    f.priority_override_updated_at = $updatedAt
+                """,
+                {"name": name, "score": override["score"], "reason": override["reason"], "updatedAt": override["updatedAt"]},
+            )
+    except Exception as e:
+        print(f"api.py: set_priority_override_in_store Neo4j exception for {name}: {e}")
+
     return override
 
 
 def clear_priority_override_in_store(name):
+    conn = sqlite3.connect(SQLITE_PATH)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE farmers SET priority_override_score = NULL, priority_override_reason = NULL, priority_override_updated_at = NULL WHERE name = ?",
+        (name,),
+    )
+    conn.commit()
+    conn.close()
+
     try:
         with driver.session() as session:
             session.run(
@@ -190,14 +251,6 @@ def clear_priority_override_in_store(name):
     except Exception as e:
         print(f"api.py: clear_priority_override_in_store Neo4j exception for {name}: {e}")
 
-    conn = sqlite3.connect(SQLITE_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE farmers SET priority_override_score = NULL, priority_override_reason = NULL, priority_override_updated_at = NULL WHERE name = ?",
-        (name,),
-    )
-    conn.commit()
-    conn.close()
     return None
 
 
@@ -349,6 +402,183 @@ def sqlite_delete_farmer(name):
     cur.execute("DELETE FROM farmers WHERE name = ?", (name,))
     conn.commit()
     conn.close()
+
+
+def persist_farmer_to_both(name, data, mode="add"):
+    cows = data.get("cows", []) or []
+    diseases = data.get("diseases", []) or []
+    milk = data.get("milk_production", 0)
+    priority = data.get("priority_score")
+    if priority is None:
+        priority = compute_priority_score(data, cows, diseases)
+
+    if mode == "delete":
+        sqlite_delete_farmer(name)
+        try:
+            with driver.session() as session:
+                session.run(
+                    """
+                    MATCH (f:Farm {name: $name})
+                    OPTIONAL MATCH (f)-[:OWNS]->(c:Cow)
+                    DETACH DELETE f, c
+                    """,
+                    {"name": name},
+                )
+        except Exception as e:
+            print(f"api.py: persist_farmer_to_both delete Neo4j exception for {name}: {e}")
+        return {"message": "Farmer persisted to SQLite and Neo4j"}
+
+    payload = {
+        "name": name,
+        "location": data.get("location", ""),
+        "phone": data.get("phone", ""),
+        "income": data.get("income", 0),
+        "acreage": data.get("acreage", 0),
+        "cows": cows,
+        "diseases": diseases,
+        "priority_score": priority,
+        "milk_production": milk,
+        "cow_count": data.get("cow_count", len(cows)),
+    }
+    if mode == "add":
+        sqlite_add_farmer(payload)
+    else:
+        sqlite_edit_farmer(name, payload)
+
+    try:
+        with driver.session() as session:
+            def run_query(query, parameters=None):
+                result = session.run(query, parameters or {})
+                if result is None:
+                    return None
+                if hasattr(result, "single"):
+                    return result.single()
+                return result
+
+            if mode == "add":
+                check = run_query("MATCH (f:Farm {name: $name}) RETURN f", {"name": name})
+                if check:
+                    run_query(
+                        """
+                        MATCH (f:Farm {name: $name})
+                        SET f.location = $location,
+                            f.phone = $phone,
+                            f.income = $income,
+                            f.acreage = $acreage,
+                            f.priority_score = $priority,
+                            f.milk_production = $milk,
+                            f.cow_count = $cow_count
+                        """,
+                        {
+                            "name": name,
+                            "location": payload["location"],
+                            "phone": payload["phone"],
+                            "income": payload["income"],
+                            "acreage": payload["acreage"],
+                            "priority": payload["priority_score"],
+                            "milk": payload["milk_production"],
+                            "cow_count": payload["cow_count"],
+                        },
+                    )
+                else:
+                    run_query(
+                        """
+                        CREATE (f:Farm {
+                            id: randomUUID(),
+                            name: $name,
+                            location: $location,
+                            phone: $phone,
+                            income: $income,
+                            acreage: $acreage,
+                            priority_score: $priority,
+                            milk_production: $milk,
+                            cow_count: $cow_count
+                        })
+                        """,
+                        {
+                            "name": name,
+                            "location": payload["location"],
+                            "phone": payload["phone"],
+                            "income": payload["income"],
+                            "acreage": payload["acreage"],
+                            "priority": payload["priority_score"],
+                            "milk": payload["milk_production"],
+                            "cow_count": payload["cow_count"],
+                        },
+                    )
+            else:
+                run_query(
+                    """
+                    MATCH (f:Farm {name: $name})
+                    SET f.location = $location,
+                        f.phone = $phone,
+                        f.income = $income,
+                        f.acreage = $acreage,
+                        f.priority_score = $priority,
+                        f.milk_production = $milk,
+                        f.cow_count = $cow_count
+                    """,
+                    {
+                        "name": name,
+                        "location": payload["location"],
+                        "phone": payload["phone"],
+                        "income": payload["income"],
+                        "acreage": payload["acreage"],
+                        "priority": payload["priority_score"],
+                        "milk": payload["milk_production"],
+                        "cow_count": payload["cow_count"],
+                    },
+                )
+
+            run_query(
+                """
+                MATCH (f:Farm {name: $name})-[r:OWNS]->(c:Cow)
+                DELETE r, c
+                """,
+                {"name": name},
+            )
+            for breed in cows:
+                if breed:
+                    run_query(
+                        """
+                        MATCH (f:Farm {name: $name})
+                        CREATE (c:Cow {id: randomUUID(), breed: $breed, milk_yield: $milk})
+                        CREATE (f)-[:OWNS]->(c)
+                        """,
+                        {"name": name, "breed": breed, "milk": milk},
+                    )
+            run_query(
+                """
+                MATCH (f:Farm {name: $name})-[r:AFFECTED_BY]->(d:Disease)
+                DELETE r
+                """,
+                {"name": name},
+            )
+            for disease in diseases:
+                if disease:
+                    run_query(
+                        """
+                        MATCH (f:Farm {name: $name})
+                        MERGE (d:Disease {name: $dname})
+                        ON CREATE SET d.id = randomUUID()
+                        MERGE (f)-[:AFFECTED_BY]->(d)
+                        """,
+                        {"name": name, "dname": disease},
+                    )
+    except Exception as e:
+        print(f"api.py: persist_farmer_to_both Neo4j exception for {name}: {e}")
+
+    return {
+        "name": name,
+        "location": payload["location"],
+        "phone": payload["phone"],
+        "income": payload["income"],
+        "priority": payload["priority_score"],
+        "cow_count": payload["cow_count"],
+        "cows": payload["cows"],
+        "diseases": payload["diseases"],
+        "milk_production": payload["milk_production"],
+    }
 
 
 # Featherless AI
@@ -511,7 +741,6 @@ def add_farmer():
                         ON CREATE SET d.id = randomUUID()
                         MERGE (f)-[:AFFECTED_BY]->(d)
                     """, {"name": name, "dname": d})
-        # Return created farmer object
         farmer_obj = {
             "name": name,
             "location": data.get('location', ''),
@@ -523,10 +752,7 @@ def add_farmer():
             "diseases": diseases,
             "milk_production": milk,
         }
-        return jsonify(farmer_obj)
-    except Exception:
-        # Fallback to sqlite
-        sqlite_add_farmer({
+        persist_farmer_to_both(name, {
             "name": name,
             "location": data.get('location', ''),
             "phone": data.get('phone', ''),
@@ -537,7 +763,21 @@ def add_farmer():
             "priority_score": priority,
             "milk_production": milk,
             "cow_count": data.get('cow_count', len(cows)),
-        })
+        }, mode="add")
+        return jsonify(farmer_obj)
+    except Exception:
+        persist_farmer_to_both(name, {
+            "name": name,
+            "location": data.get('location', ''),
+            "phone": data.get('phone', ''),
+            "income": data.get('income', 0),
+            "acreage": data.get('acreage', 0),
+            "cows": cows,
+            "diseases": diseases,
+            "priority_score": priority,
+            "milk_production": milk,
+            "cow_count": data.get('cow_count', len(cows)),
+        }, mode="add")
         farmer_obj = {
             "name": name,
             "location": data.get('location', ''),
@@ -616,7 +856,6 @@ def edit_farmer(name):
                             MERGE (f)-[:AFFECTED_BY]->(d)
                         """, {"name": name, "dname": d})
 
-            # Return updated farmer object
             farmer_obj = {
                 "name": name,
                 "location": data.get('location', ''),
@@ -628,19 +867,32 @@ def edit_farmer(name):
                 "diseases": diseases,
                 "milk_production": milk,
             }
-            return jsonify(farmer_obj)
-        except Exception:
-            # Fallback to sqlite
-            sqlite_edit_farmer(name, {
+            persist_farmer_to_both(name, {
+                "name": name,
                 "location": data.get('location', ''),
                 "phone": data.get('phone', ''),
                 "income": data.get('income', 0),
                 "acreage": data.get('acreage', 0),
                 "cows": cows,
                 "diseases": diseases,
+                "priority_score": priority,
                 "milk_production": milk,
                 "cow_count": data.get('cow_count', len(cows)),
-            })
+            }, mode="edit")
+            return jsonify(farmer_obj)
+        except Exception:
+            persist_farmer_to_both(name, {
+                "name": name,
+                "location": data.get('location', ''),
+                "phone": data.get('phone', ''),
+                "income": data.get('income', 0),
+                "acreage": data.get('acreage', 0),
+                "cows": cows,
+                "diseases": diseases,
+                "priority_score": priority,
+                "milk_production": milk,
+                "cow_count": data.get('cow_count', len(cows)),
+            }, mode="edit")
             farmer_obj = {
                 "name": name,
                 "location": data.get('location', ''),
@@ -775,16 +1027,16 @@ def delete_farmer(name):
     """Delete a farmer from Neo4j or SQLite fallback."""
     try:
         with driver.session() as session:
-            # Delete farmer and owned cow nodes cleanly while keeping shared disease nodes.
             session.run("""
                 MATCH (f:Farm {name: $name})
                 OPTIONAL MATCH (f)-[:OWNS]->(c:Cow)
                 DETACH DELETE f, c
             """, {"name": name})
+        persist_farmer_to_both(name, {}, mode="delete")
         return jsonify({"message": "Farmer deleted"})
     except Exception as e:
         print(f'api.py: delete_farmer Neo4j exception for {name}: {e}')
-        sqlite_delete_farmer(name)
+        persist_farmer_to_both(name, {}, mode="delete")
         return jsonify({"message": "Farmer deleted (SQLite fallback)"})
 
 

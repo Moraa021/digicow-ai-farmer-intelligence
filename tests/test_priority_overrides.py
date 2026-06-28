@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -46,6 +47,55 @@ class PriorityOverrideTests(unittest.TestCase):
         get_response = self.client.get("/priority-override/FarmerA")
         self.assertEqual(get_response.status_code, 200)
         self.assertIsNone(get_response.get_json())
+
+    def test_persist_farmer_to_both_stores(self):
+        class FakeSession:
+            def __init__(self):
+                self.queries = []
+
+            def run(self, query, parameters=None):
+                self.queries.append((query, parameters))
+                return None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        fake_session = FakeSession()
+
+        class FakeDriver:
+            def session(self):
+                return fake_session
+
+        with patch.object(api, "driver", FakeDriver()):
+            api.persist_farmer_to_both(
+                "FarmerA",
+                {
+                    "location": "Kajiado",
+                    "phone": "0712345678",
+                    "income": 20000,
+                    "acreage": 4,
+                    "cows": ["Holstein"],
+                    "diseases": ["Mastitis"],
+                    "milk_production": 18,
+                    "cow_count": 1,
+                },
+                mode="add",
+            )
+
+        conn = sqlite3.connect(self.sqlite_path)
+        row = conn.execute(
+            "SELECT name, location, phone, income, milk_production, cow_count FROM farmers WHERE name = ?",
+            ("FarmerA",),
+        ).fetchone()
+        conn.close()
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "FarmerA")
+        self.assertEqual(row[1], "Kajiado")
+        self.assertGreaterEqual(len(fake_session.queries), 1)
 
 
 if __name__ == "__main__":
