@@ -179,8 +179,8 @@ function FarmerProfile() {
 
         <div className="grid gap-4 border-t border-border p-6 sm:grid-cols-4 sm:p-8">
             <Metric label={t("profile.annualIncome")} value={income} />
-            <Metric label={t("profile.livestock")} value={`${farmer.cows.length} cow(s)`} />
-            <Metric label={t("profile.milkProduction")} value={milk} />
+            <Metric label={t("profile.totalCows")} value={`${farmer.cow_count ?? farmer.cows.length} cow(s)`} />
+            <Metric label={t("profile.breedCount")} value={`${farmer.cows.length} breed(s)`} />
             <Metric
               label={t("profile.activeDiseases")}
               value={`${farmer.diseases.length}`}

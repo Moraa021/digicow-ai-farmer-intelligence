@@ -36,7 +36,8 @@ def ensure_sqlite():
         income REAL,
         acreage REAL,
         priority_score REAL,
-        milk_production REAL
+        milk_production REAL,
+        cow_count INTEGER
     )
     """)
     cur.execute("""
@@ -95,7 +96,11 @@ def compute_priority_score(farmer_props, cows, diseases):
         pass
 
     # Number of cows affects priority slightly
-    score += max(0, 5 - len(cows))
+    try:
+        counted_cows = int(farmer_props.get("cow_count", len(cows)))
+    except Exception:
+        counted_cows = len(cows)
+    score += max(0, 5 - counted_cows)
 
     # Clamp
     return max(0, min(100, round(score)))
@@ -103,7 +108,7 @@ def compute_priority_score(farmer_props, cows, diseases):
 def sqlite_get_farmers():
     conn = sqlite3.connect(SQLITE_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT name, location, phone, income, priority_score FROM farmers ORDER BY priority_score DESC")
+    cur.execute("SELECT name, location, phone, income, priority_score, cow_count FROM farmers ORDER BY priority_score DESC")
     rows = cur.fetchall()
     farmers = []
     for r in rows:
@@ -113,6 +118,7 @@ def sqlite_get_farmers():
             "phone": r[2] or 'N/A',
             "income": r[3] or 0,
             "priority": r[4] or 0,
+            "cow_count": r[5] or 0,
             "cows": [],
             "diseases": []
         })
@@ -122,7 +128,7 @@ def sqlite_get_farmers():
 def sqlite_get_farmer(name):
     conn = sqlite3.connect(SQLITE_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT name, location, phone, income, priority_score, milk_production FROM farmers WHERE name = ?", (name,))
+    cur.execute("SELECT name, location, phone, income, priority_score, milk_production, cow_count FROM farmers WHERE name = ?", (name,))
     r = cur.fetchone()
     if not r:
         conn.close()
@@ -139,6 +145,7 @@ def sqlite_get_farmer(name):
         "income": r[3] or 0,
         "priority": r[4] or 0,
         "milk_production": r[5] or 0,
+        "cow_count": r[6] or 0,
         "cows": cows,
         "diseases": diseases,
     }
@@ -147,7 +154,7 @@ def sqlite_add_farmer(data):
     conn = sqlite3.connect(SQLITE_PATH)
     cur = conn.cursor()
     fid = data.get('id') or str(data.get('name'))
-    cur.execute("INSERT OR IGNORE INTO farmers (id, name, location, phone, income, acreage, priority_score, milk_production) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (
+    cur.execute("INSERT OR IGNORE INTO farmers (id, name, location, phone, income, acreage, priority_score, milk_production, cow_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (
         fid,
         data.get('name'),
         data.get('location', ''),
@@ -156,6 +163,7 @@ def sqlite_add_farmer(data):
         data.get('acreage', 0),
         data.get('priority_score', 25),
         data.get('milk_production', 0),
+        data.get('cow_count', len(data.get('cows', []))),
     ))
     for breed in data.get('cows', []):
         if breed:
@@ -170,12 +178,13 @@ def sqlite_add_farmer(data):
 def sqlite_edit_farmer(name, data):
     conn = sqlite3.connect(SQLITE_PATH)
     cur = conn.cursor()
-    cur.execute("UPDATE farmers SET location = ?, phone = ?, income = ?, acreage = ?, milk_production = ? WHERE name = ?", (
+    cur.execute("UPDATE farmers SET location = ?, phone = ?, income = ?, acreage = ?, milk_production = ?, cow_count = ? WHERE name = ?", (
         data.get('location', ''),
         data.get('phone', ''),
         data.get('income', 0),
         data.get('acreage', 0),
         data.get('milk_production', 0),
+        data.get('cow_count', len(data.get('cows', []))),
         name,
     ))
     # Replace cows
@@ -231,7 +240,7 @@ def get_farmers():
                 OPTIONAL MATCH (f)-[:AFFECTED_BY]->(d:Disease)
                 RETURN f.name as name, f.location as location, f.phone as phone,
                        f.income as income, f.priority_score as priority,
-                       f.milk_production as milk_production,
+                       f.milk_production as milk_production, f.cow_count as cow_count,
                        COLLECT(DISTINCT c.breed) as cows,
                        COLLECT(DISTINCT d.name) as diseases
                 ORDER BY f.priority_score DESC
@@ -245,6 +254,7 @@ def get_farmers():
                     "income": record.get('income') or 0,
                     "priority": record.get('priority') or 0,
                     "milk_production": record.get('milk_production') or 0,
+                    "cow_count": record.get('cow_count') if record.get('cow_count') is not None else len(record.get('cows') or []),
                     "cows": record.get('cows') or [],
                     "diseases": record.get('diseases') or []
                 })
@@ -269,7 +279,7 @@ def get_farmer(name):
                 OPTIONAL MATCH (f)-[:HAS_SOIL]->(s:Soil)
                 RETURN f.name as name, f.location as location, f.phone as phone,
                        f.income as income, f.priority_score as priority,
-                       f.milk_production as milk_production,
+                       f.milk_production as milk_production, f.cow_count as cow_count,
                        COLLECT(DISTINCT c.breed) as cows,
                        COLLECT(DISTINCT d.name) as diseases,
                        COLLECT(DISTINCT s.type) as soil_types
@@ -284,6 +294,7 @@ def get_farmer(name):
                     "income": data.get('income') or 0,
                     "priority": data.get('priority') or 0,
                     "milk_production": data.get('milk_production') or 0,
+                    "cow_count": data.get('cow_count') if data.get('cow_count') is not None else len(data.get('cows') or []),
                     "cows": data.get('cows') or [],
                     "diseases": data.get('diseases') or [],
                     "soil_types": data.get('soil_types') or []
@@ -329,7 +340,8 @@ def add_farmer():
                     income: $income,
                     acreage: $acreage,
                     priority_score: $priority,
-                    milk_production: $milk
+                    milk_production: $milk,
+                    cow_count: $cow_count
                 })
             """, {
                 "name": name,
@@ -339,6 +351,7 @@ def add_farmer():
                 "acreage": data.get('acreage', 0),
                 "priority": priority,
                 "milk": milk,
+                "cow_count": data.get('cow_count', len(cows)),
             })
 
             # Add cows if provided
@@ -366,6 +379,7 @@ def add_farmer():
             "phone": data.get('phone', ''),
             "income": data.get('income', 0),
             "priority": priority,
+            "cow_count": data.get('cow_count', len(cows)),
             "cows": cows,
             "diseases": diseases,
             "milk_production": milk,
@@ -383,6 +397,7 @@ def add_farmer():
             "diseases": diseases,
             "priority_score": priority,
             "milk_production": milk,
+            "cow_count": data.get('cow_count', len(cows)),
         })
         farmer_obj = {
             "name": name,
@@ -390,6 +405,7 @@ def add_farmer():
             "phone": data.get('phone', ''),
             "income": data.get('income', 0),
             "priority": priority,
+            "cow_count": data.get('cow_count', len(cows)),
             "cows": cows,
             "diseases": diseases,
             "milk_production": milk,
@@ -421,7 +437,8 @@ def edit_farmer(name):
                         f.income = $income,
                         f.acreage = $acreage,
                         f.priority_score = $priority,
-                        f.milk_production = $milk
+                        f.milk_production = $milk,
+                        f.cow_count = $cow_count
                 """, {
                     "name": name,
                     "location": data.get('location', ''),
@@ -430,6 +447,7 @@ def edit_farmer(name):
                     "acreage": data.get('acreage', 0),
                     "priority": priority,
                     "milk": milk,
+                    "cow_count": data.get('cow_count', len(cows)),
                 })
 
                 # Remove existing cows and recreate
@@ -466,6 +484,7 @@ def edit_farmer(name):
                 "phone": data.get('phone', ''),
                 "income": data.get('income', 0),
                 "priority": priority,
+                "cow_count": data.get('cow_count', len(cows)),
                 "cows": cows,
                 "diseases": diseases,
                 "milk_production": milk,
@@ -481,6 +500,7 @@ def edit_farmer(name):
                 "cows": cows,
                 "diseases": diseases,
                 "milk_production": milk,
+                "cow_count": data.get('cow_count', len(cows)),
             })
             farmer_obj = {
                 "name": name,
@@ -488,6 +508,7 @@ def edit_farmer(name):
                 "phone": data.get('phone', ''),
                 "income": data.get('income', 0),
                 "priority": priority,
+                "cow_count": data.get('cow_count', len(cows)),
                 "cows": cows,
                 "diseases": diseases,
                 "milk_production": milk,

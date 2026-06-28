@@ -20,6 +20,7 @@ export function EditFarmerDialog({
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
   const [income, setIncome] = useState("");
+  const [cowCount, setCowCount] = useState("");
   const [soil, setSoil] = useState("");
   const [cows, setCows] = useState("");
   const [diseases, setDiseases] = useState("");
@@ -31,6 +32,7 @@ export function EditFarmerDialog({
       setLocation(farmer.location || "");
       setPhone(farmer.phone || "");
       setIncome(String(farmer.income ?? ""));
+      setCowCount(String(farmer.cow_count ?? ""));
       setSoil(farmer.soil || "");
       setCows((farmer.cows || []).join(", "));
       setDiseases((farmer.diseases || []).join(", "));
@@ -60,6 +62,7 @@ export function EditFarmerDialog({
       phone: phone.trim(),
       income: income ? Number(income) : 0,
       soil: soil.trim(),
+      cow_count: cowCount ? Number(cowCount) : cows.split(",").map((s) => s.trim()).filter(Boolean).length,
       cows: cows.split(",").map((s) => s.trim()).filter(Boolean),
       diseases: diseases.split(",").map((s) => s.trim()).filter(Boolean),
       milk_production: milk ? Number(milk) : 0,

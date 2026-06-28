@@ -38,6 +38,7 @@ function AddFarmer() {
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
   const [income, setIncome] = useState<string>("");
+  const [cowCount, setCowCount] = useState<string>("");
   const [cows, setCows] = useState<string[]>([]);
   const [cowInput, setCowInput] = useState("");
   const [diseasesInput, setDiseasesInput] = useState("");
@@ -107,6 +108,7 @@ function AddFarmer() {
       location: parsed.data.location,
       phone: parsed.data.phone,
       income: parsed.data.income ?? 0,
+      cow_count: cowCount ? Number(cowCount) : finalCows.length,
       cows: finalCows,
       diseases: finalDiseases,
       milk_production: milkProduction ? Number(milkProduction) : 0,
@@ -168,6 +170,17 @@ function AddFarmer() {
             value={income}
             onChange={(e) => setIncome(e.target.value)}
             placeholder="e.g., 45000"
+            className="input"
+          />
+        </Field>
+
+        <Field label="Number of Cows">
+          <input
+            type="number"
+            min={0}
+            value={cowCount}
+            onChange={(e) => setCowCount(e.target.value)}
+            placeholder="e.g., 12"
             className="input"
           />
         </Field>

@@ -4,6 +4,7 @@ export interface Farmer {
   phone: string;
   income: number;
   priority: number;
+  cow_count?: number;
   cows: string[];
   diseases: string[];
   milk_production?: number;
@@ -15,6 +16,7 @@ export interface AddFarmerPayload {
   location?: string;
   phone?: string;
   income?: number;
+  cow_count?: number;
   cows?: string[];
   diseases?: string[];
   soil?: string;

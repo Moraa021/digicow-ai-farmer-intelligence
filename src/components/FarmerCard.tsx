@@ -39,12 +39,18 @@ export function FarmerCard({
         <PriorityBadge score={priority} />
       </div>
 
-      <dl className="mt-4 grid grid-cols-3 gap-3 text-sm">
+      <dl className="mt-4 grid grid-cols-4 gap-3 text-sm">
         <div className="min-w-0">
           <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
             {t("card.income")}
           </dt>
           <dd className="truncate font-medium">{income}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            {t("card.totalCows")}
+          </dt>
+          <dd className="truncate font-medium">{farmer.cow_count ?? farmer.cows.length}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">

@@ -58,10 +58,12 @@ const DICT: Dict = {
   "card.healthy": { en: "Healthy", sw: "Mzima" },
   "card.noLivestock": { en: "No livestock", sw: "Hakuna ng'ombe" },
   "card.milkProduction": { en: "Milk production", sw: "Uzalishaji wa maziwa" },
+  "card.totalCows": { en: "Total cows", sw: "Idadi ya ng'ombe" },
 
   "profile.back": { en: "← Back to dashboard", sw: "← Rudi dashibodi" },
   "profile.annualIncome": { en: "Annual Income", sw: "Mapato ya Mwaka" },
-  "profile.livestock": { en: "Livestock", sw: "Mifugo" },
+  "profile.totalCows": { en: "Total cows", sw: "Idadi ya ng'ombe" },
+  "profile.breedCount": { en: "Breeds", sw: "Aina" },
   "profile.milkProduction": { en: "Milk production", sw: "Uzalishaji wa maziwa" },
   "profile.activeDiseases": { en: "Active Diseases", sw: "Magonjwa Hai" },
   "profile.aiTitle": { en: "AI-Powered Recommendation", sw: "Mapendekezo ya AI" },
